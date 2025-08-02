@@ -1,0 +1,363 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+env:
+  BUILD_TYPE: Release
+
+jobs:
+  # Linux builds with different compilers
+  linux-gcc:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        compiler: [gcc-9, gcc-10, gcc-11, gcc-12]
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential cmake libpcre2-dev libre2-dev pkg-config
+        if [ "${{ matrix.compiler }}" != "gcc" ]; then
+          sudo apt-get install -y ${{ matrix.compiler }} ${{ matrix.compiler }}-g++
+        fi
+    
+    - name: Set compiler
+      run: |
+        if [ "${{ matrix.compiler }}" != "gcc" ]; then
+          export CC=${{ matrix.compiler }}
+          export CXX=${{ matrix.compiler }}-g++
+        fi
+    
+    - name: Configure CMake
+      run: |
+        mkdir build
+        cd build
+        cmake .. -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }}
+    
+    - name: Build
+      run: |
+        cd build
+        make -j$(nproc)
+    
+    - name: Test
+      run: |
+        cd build
+        # Create test files
+        echo "hello world" > test1.txt
+        echo "HELLO WORLD" > test2.txt
+        echo "goodbye" > test3.txt
+        
+        # Test basic functionality
+        ./cpp_ripgrep "hello" test1.txt
+        ./cpp_ripgrep -i "hello" test2.txt
+        ./cpp_ripgrep -c "hello" test*.txt
+        ./cpp_ripgrep -v "hello" test*.txt
+
+  linux-clang:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        compiler: [clang-10, clang-11, clang-12, clang-13, clang-14, clang-15]
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential cmake libpcre2-dev libre2-dev pkg-config ${{ matrix.compiler }}
+    
+    - name: Set compiler
+      run: |
+        export CC=${{ matrix.compiler }}
+        export CXX=${{ matrix.compiler }}++
+    
+    - name: Configure CMake
+      run: |
+        mkdir build
+        cd build
+        cmake .. -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }}
+    
+    - name: Build
+      run: |
+        cd build
+        make -j$(nproc)
+    
+    - name: Test
+      run: |
+        cd build
+        # Create test files
+        echo "hello world" > test1.txt
+        echo "HELLO WORLD" > test2.txt
+        echo "goodbye" > test3.txt
+        
+        # Test basic functionality
+        ./cpp_ripgrep "hello" test1.txt
+        ./cpp_ripgrep -i "hello" test2.txt
+        ./cpp_ripgrep -c "hello" test*.txt
+        ./cpp_ripgrep -v "hello" test*.txt
+
+  # macOS builds
+  macos:
+    runs-on: macos-latest
+    strategy:
+      matrix:
+        compiler: [clang, gcc-11, gcc-12]
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install dependencies
+      run: |
+        brew install cmake pcre2 re2
+        if [ "${{ matrix.compiler }}" != "clang" ]; then
+          brew install ${{ matrix.compiler }}
+        fi
+    
+    - name: Set compiler
+      run: |
+        if [ "${{ matrix.compiler }}" != "clang" ]; then
+          export CC=${{ matrix.compiler }}-11
+          export CXX=${{ matrix.compiler }}-11
+        fi
+    
+    - name: Configure CMake
+      run: |
+        mkdir build
+        cd build
+        cmake .. -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }}
+    
+    - name: Build
+      run: |
+        cd build
+        make -j$(sysctl -n hw.ncpu)
+    
+    - name: Test
+      run: |
+        cd build
+        # Create test files
+        echo "hello world" > test1.txt
+        echo "HELLO WORLD" > test2.txt
+        echo "goodbye" > test3.txt
+        
+        # Test basic functionality
+        ./cpp_ripgrep "hello" test1.txt
+        ./cpp_ripgrep -i "hello" test2.txt
+        ./cpp_ripgrep -c "hello" test*.txt
+        ./cpp_ripgrep -v "hello" test*.txt
+
+  # Windows builds
+  windows:
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        compiler: [msvc, mingw]
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install dependencies (MSVC)
+      if: matrix.compiler == 'msvc'
+      run: |
+        # MSVC dependencies are handled by vcpkg or system
+        echo "Using MSVC compiler"
+    
+    - name: Install dependencies (MinGW)
+      if: matrix.compiler == 'mingw'
+      run: |
+        # Install MinGW-w64
+        choco install mingw
+        refreshenv
+    
+    - name: Configure CMake (MSVC)
+      if: matrix.compiler == 'msvc'
+      run: |
+        mkdir build
+        cd build
+        cmake .. -G "Visual Studio 16 2019" -A x64 -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }}
+    
+    - name: Configure CMake (MinGW)
+      if: matrix.compiler == 'mingw'
+      run: |
+        mkdir build
+        cd build
+        cmake .. -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }}
+    
+    - name: Build (MSVC)
+      if: matrix.compiler == 'msvc'
+      run: |
+        cd build
+        cmake --build . --config ${{ env.BUILD_TYPE }}
+    
+    - name: Build (MinGW)
+      if: matrix.compiler == 'mingw'
+      run: |
+        cd build
+        cmake --build .
+    
+    - name: Test
+      run: |
+        cd build
+        if [ "${{ matrix.compiler }}" == "msvc" ]; then
+          ./${{ env.BUILD_TYPE }}/cpp_ripgrep.exe --version
+        else
+          ./cpp_ripgrep.exe --version
+        fi
+
+  # Cross-compilation for Windows from Linux
+  windows-cross:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        arch: [x64, x86]
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential cmake pkg-config
+        sudo apt-get install -y gcc-mingw-w64-x86-64 gcc-mingw-w64-i686
+    
+    - name: Build Windows x64
+      if: matrix.arch == 'x64'
+      run: |
+        mkdir build-windows64
+        cd build-windows64
+        cmake .. -DCMAKE_TOOLCHAIN_FILE=../cmake/windows-toolchain.cmake -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }}
+        make -j$(nproc)
+    
+    - name: Build Windows x86
+      if: matrix.arch == 'x86'
+      run: |
+        mkdir build-windows32
+        cd build-windows32
+        cmake .. -DCMAKE_TOOLCHAIN_FILE=../cmake/windows32-toolchain.cmake -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }}
+        make -j$(nproc)
+    
+    - name: Test Windows executable
+      run: |
+        if [ "${{ matrix.arch }}" == "x64" ]; then
+          cd build-windows64
+          wine ./cpp_ripgrep.exe --version
+        else
+          cd build-windows32
+          wine ./cpp_ripgrep.exe --version
+        fi
+
+  # Code quality checks
+  code-quality:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential cmake libpcre2-dev libre2-dev pkg-config clang-tidy cppcheck
+    
+    - name: Configure CMake with clang-tidy
+      run: |
+        mkdir build
+        cd build
+        cmake .. -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_CLANG_TIDY=clang-tidy
+    
+    - name: Build with clang-tidy
+      run: |
+        cd build
+        make -j$(nproc)
+    
+    - name: Run cppcheck
+      run: |
+        cppcheck --enable=all --std=c++17 --suppress=missingIncludeSystem src/ include/
+
+  # Performance benchmark
+  benchmark:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential cmake libpcre2-dev libre2-dev pkg-config time
+    
+    - name: Build optimized version
+      run: |
+        mkdir build
+        cd build
+        cmake .. -DCMAKE_BUILD_TYPE=Release
+        make -j$(nproc)
+    
+    - name: Run benchmark
+      run: |
+        cd build
+        # Create a large test file
+        for i in {1..1000}; do
+          echo "line $i: hello world test pattern matching performance" >> benchmark.txt
+        done
+        
+        # Run benchmark
+        echo "Running performance benchmark..."
+        time ./cpp_ripgrep "pattern" benchmark.txt
+        time ./cpp_ripgrep -i "PATTERN" benchmark.txt
+        time ./cpp_ripgrep "\\w+" benchmark.txt
+
+  # Package and release
+  package:
+    runs-on: ubuntu-latest
+    needs: [linux-gcc, windows-cross]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential cmake libpcre2-dev libre2-dev pkg-config gcc-mingw-w64-x86-64 gcc-mingw-w64-i686
+    
+    - name: Build Linux version
+      run: |
+        mkdir build-linux
+        cd build-linux
+        cmake .. -DCMAKE_BUILD_TYPE=Release
+        make -j$(nproc)
+        strip cpp_ripgrep
+    
+    - name: Build Windows x64
+      run: |
+        mkdir build-windows64
+        cd build-windows64
+        cmake .. -DCMAKE_TOOLCHAIN_FILE=../cmake/windows-toolchain.cmake -DCMAKE_BUILD_TYPE=Release
+        make -j$(nproc)
+    
+    - name: Build Windows x86
+      run: |
+        mkdir build-windows32
+        cd build-windows32
+        cmake .. -DCMAKE_TOOLCHAIN_FILE=../cmake/windows32-toolchain.cmake -DCMAKE_BUILD_TYPE=Release
+        make -j$(nproc)
+    
+    - name: Create release package
+      run: |
+        mkdir -p dist
+        cp build-linux/cpp_ripgrep dist/cpp_ripgrep-linux-x64
+        cp build-windows64/cpp_ripgrep.exe dist/cpp_ripgrep-windows-x64.exe
+        cp build-windows32/cpp_ripgrep.exe dist/cpp_ripgrep-windows-x86.exe
+        
+        # Create zip packages
+        zip -j cpp_ripgrep-linux-x64.zip dist/cpp_ripgrep-linux-x64
+        zip -j cpp_ripgrep-windows-x64.zip dist/cpp_ripgrep-windows-x64.exe
+        zip -j cpp_ripgrep-windows-x86.zip dist/cpp_ripgrep-windows-x86.exe
+    
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: cpp_ripgrep-binaries
+        path: |
+          *.zip
+          dist/ 

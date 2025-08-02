@@ -1,0 +1,106 @@
+name: Pull Request
+
+on:
+  pull_request:
+    branches: [ main, develop ]
+
+env:
+  BUILD_TYPE: Debug
+
+jobs:
+  # Essential Linux build with GCC
+  linux-gcc:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential cmake libpcre2-dev libre2-dev pkg-config
+    
+    - name: Configure CMake
+      run: |
+        mkdir build
+        cd build
+        cmake .. -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }}
+    
+    - name: Build
+      run: |
+        cd build
+        make -j$(nproc)
+    
+    - name: Test
+      run: |
+        cd build
+        # Create test files
+        echo "hello world" > test1.txt
+        echo "HELLO WORLD" > test2.txt
+        echo "goodbye" > test3.txt
+        
+        # Test basic functionality
+        ./cpp_ripgrep "hello" test1.txt
+        ./cpp_ripgrep -i "hello" test2.txt
+        ./cpp_ripgrep -c "hello" test*.txt
+        ./cpp_ripgrep -v "hello" test*.txt
+
+  # Essential macOS build
+  macos:
+    runs-on: macos-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install dependencies
+      run: |
+        brew install cmake pcre2 re2
+    
+    - name: Configure CMake
+      run: |
+        mkdir build
+        cd build
+        cmake .. -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }}
+    
+    - name: Build
+      run: |
+        cd build
+        make -j$(sysctl -n hw.ncpu)
+    
+    - name: Test
+      run: |
+        cd build
+        # Create test files
+        echo "hello world" > test1.txt
+        echo "HELLO WORLD" > test2.txt
+        echo "goodbye" > test3.txt
+        
+        # Test basic functionality
+        ./cpp_ripgrep "hello" test1.txt
+        ./cpp_ripgrep -i "hello" test2.txt
+        ./cpp_ripgrep -c "hello" test*.txt
+        ./cpp_ripgrep -v "hello" test*.txt
+
+  # Code quality checks
+  code-quality:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential cmake libpcre2-dev libre2-dev pkg-config clang-tidy cppcheck
+    
+    - name: Configure CMake with clang-tidy
+      run: |
+        mkdir build
+        cd build
+        cmake .. -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_CLANG_TIDY=clang-tidy
+    
+    - name: Build with clang-tidy
+      run: |
+        cd build
+        make -j$(nproc)
+    
+    - name: Run cppcheck
+      run: |
+        cppcheck --enable=all --std=c++17 --suppress=missingIncludeSystem src/ include/ 

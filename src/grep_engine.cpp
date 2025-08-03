@@ -44,6 +44,8 @@ GrepEngine::GrepEngine(const Options& options)
 }
 
 int GrepEngine::search() {
+    search_finished_.store(false); // Mark search as not finished at start
+
     // Collect all files to process
     std::vector<FileInfo> files_to_process;
     scanner_.scan(options_.paths, [&](const FileInfo& file_info) {
@@ -79,7 +81,9 @@ int GrepEngine::search() {
     for (auto& worker : workers_) {
         worker.join();
     }
-    
+
+    search_finished_.store(true); // Mark search as finished
+
     // Print results
     if (!options_.quiet) {
         if (options_.count_only) {
@@ -135,7 +139,10 @@ void GrepEngine::process_file(const FileInfo& file_info) {
     try {
         std::string content = scanner_.read_file(file_info.path);
         auto file_results = search_in_content(file_info.path, content);
-        
+
+        // Increment files_searched_ for each processed file
+        files_searched_.fetch_add(1);
+
         for (const auto& result : file_results) {
             add_result(result);
         }
@@ -304,4 +311,4 @@ std::string GrepEngine::colorize(const std::string& text, const std::string& col
     return color_code + text + "\033[0m";
 }
 
-} // namespace cpp_ripgrep 
+} // namespace cpp_ripgrep

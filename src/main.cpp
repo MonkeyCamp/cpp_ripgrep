@@ -18,8 +18,7 @@ int main(int argc, char* argv[]) {
         // End performance timer
         auto end = std::chrono::high_resolution_clock::now();
         std::chrono::duration<double> elapsed = end - start;
-        std::cout << "Search completed in " << elapsed.count() << " seconds and ";
-        std::cout << "searched in " << engine.get_files_searched() << ".\n";
+        std::cout << "Search completed in " << elapsed.count() << " seconds.\n";
 
         return result;
 

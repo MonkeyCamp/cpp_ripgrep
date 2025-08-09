@@ -26,18 +26,18 @@ public:
     
     // Main search function
     int search();
+
+    // Start the search asynchronously
+    void start_search();
+
+    // Stop the search and wait for workers
+    void stop_search();
     
     // Get results (for testing or programmatic use)
     const std::vector<SearchResult>& get_results() const { return results_; }
     
     // Get match count
     size_t get_match_count() const { return match_count_; }
-
-    // Get number of files searched
-    size_t get_files_searched() const { return files_searched_; }
-
-    // Check if search is finished
-    bool is_search_finished() const { return search_finished_.load(); }
 
 private:
     Options options_;
@@ -47,12 +47,6 @@ private:
     
     std::vector<SearchResult> results_;
     std::atomic<size_t> match_count_{0};
-
-    // Track number of files searched
-    std::atomic<size_t> files_searched_{0};
-
-    // Flag to indicate search is finished
-    std::atomic<bool> search_finished_{false};
     
     // Threading support
     std::vector<std::thread> workers_;

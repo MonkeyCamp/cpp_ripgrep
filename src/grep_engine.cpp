@@ -43,46 +43,41 @@ GrepEngine::GrepEngine(const Options& options)
     }
 }
 
-int GrepEngine::search() {
-    search_finished_.store(false); // Mark search as not finished at start
-
-    // Collect all files to process
-    std::vector<FileInfo> files_to_process;
-    scanner_.scan(options_.paths, [&](const FileInfo& file_info) {
-        files_to_process.push_back(file_info);
-    });
-    
-    if (files_to_process.empty()) {
-        if (!options_.quiet) {
-            std::cout << "No files found to search.\n";
-        }
-        return 0;
-    }
-    
+void GrepEngine::start_search() {
     // Initialize worker threads
     workers_.reserve(options_.threads);
     for (int i = 0; i < options_.threads; ++i) {
         workers_.emplace_back(&GrepEngine::worker_thread, this);
     }
-    
-    // Add files to queue
-    {
-        std::lock_guard<std::mutex> lock(queue_mutex_);
-        for (const auto& file : files_to_process) {
-            file_queue_.push(file);
+
+    // Scan files and push to the queue
+    scanner_.scan(options_.paths, [this](const FileInfo& file_info) {
+        {
+            std::lock_guard<std::mutex> lock(queue_mutex_);
+            file_queue_.push(file_info);
         }
-    }
-    queue_cv_.notify_all();
-    
-    // Signal that we're done and wait for all workers to finish
+        queue_cv_.notify_one();
+    });
+
+    // Signal that scanning is done
     done_.store(true);
     queue_cv_.notify_all();
-    
-    for (auto& worker : workers_) {
-        worker.join();
-    }
+}
 
-    search_finished_.store(true); // Mark search as finished
+void GrepEngine::stop_search() {
+    for (auto& worker : workers_) {
+        if (worker.joinable()) {
+            worker.join();
+        }
+    }
+}
+
+int GrepEngine::search() {
+    // Start the search
+    start_search();
+
+    // Wait for all workers to finish
+    stop_search();
 
     // Print results
     if (!options_.quiet) {
@@ -90,20 +85,20 @@ int GrepEngine::search() {
             std::cout << match_count_.load() << "\n";
         } else {
             // Sort results for consistent output
-            std::sort(results_.begin(), results_.end(), 
-                     [](const SearchResult& a, const SearchResult& b) {
-                         if (a.file_path != b.file_path) {
-                             return a.file_path < b.file_path;
-                         }
-                         return a.line_number < b.line_number;
-                     });
-            
+            std::sort(results_.begin(), results_.end(),
+                      [](const SearchResult& a, const SearchResult& b) {
+                          if (a.file_path != b.file_path) {
+                              return a.file_path < b.file_path;
+                          }
+                          return a.line_number < b.line_number;
+                      });
+
             for (const auto& result : results_) {
                 print_result(result);
             }
         }
     }
-    
+
     return match_count_.load() > 0 ? 0 : 1;
 }
 
@@ -139,9 +134,6 @@ void GrepEngine::process_file(const FileInfo& file_info) {
     try {
         std::string content = scanner_.read_file(file_info.path);
         auto file_results = search_in_content(file_info.path, content);
-
-        // Increment files_searched_ for each processed file
-        files_searched_.fetch_add(1);
 
         for (const auto& result : file_results) {
             add_result(result);

@@ -91,15 +91,17 @@ void RegexMatcher::move_from(RegexMatcher&& other) {
 std::vector<Match> RegexMatcher::find_all(const std::string& text) const {
     std::vector<Match> matches;
     
-#ifdef HAVE_PCRE2
+    #ifdef HAVE_PCRE2
     if (!is_valid()) {
         return matches;
     }
-    
     PCRE2_SIZE start_offset = 0;
     const PCRE2_SPTR subject = reinterpret_cast<const PCRE2_SPTR>(text.c_str());
     const PCRE2_SIZE subject_length = text.length();
-    
+    pcre2_match_data* match_data = pcre2_match_data_create_from_pattern(code_, nullptr);
+    if (!match_data) {
+        return matches;
+    }
     while (start_offset < subject_length) {
         int rc = pcre2_match(
             code_,
@@ -107,10 +109,9 @@ std::vector<Match> RegexMatcher::find_all(const std::string& text) const {
             subject_length,
             start_offset,
             0,
-            match_data_,
+            match_data,
             nullptr
         );
-        
         if (rc < 0) {
             if (rc == PCRE2_ERROR_NOMATCH) {
                 break;
@@ -118,18 +119,14 @@ std::vector<Match> RegexMatcher::find_all(const std::string& text) const {
             // Handle other errors
             break;
         }
-        
-        PCRE2_SIZE* ovector = pcre2_get_ovector_pointer(match_data_);
-        
+        PCRE2_SIZE* ovector = pcre2_get_ovector_pointer(match_data);
         Match match;
         match.start = ovector[0];
         match.end = ovector[1];
-        // Fix: Only extract substring if within bounds
         if (match.start <= match.end && match.end <= text.size()) {
             match.text = text.substr(match.start, match.end - match.start);
             matches.push_back(match);
         }
-        
         // Move to next position
         if (ovector[0] == ovector[1]) {
             start_offset = ovector[1] + 1;
@@ -137,7 +134,8 @@ std::vector<Match> RegexMatcher::find_all(const std::string& text) const {
             start_offset = ovector[1];
         }
     }
-#endif
+    pcre2_match_data_free(match_data);
+    #endif
     
     return matches;
 }

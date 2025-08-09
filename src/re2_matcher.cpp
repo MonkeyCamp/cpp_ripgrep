@@ -77,7 +77,7 @@ std::vector<Match> RE2Matcher::find_all(const std::string& text) const {
         Match match;
         match.start = start_pos + (text.data() + start_pos - input.data());
         match.end = match.start + match_text.size();
-        match.text = match_text.ToString();
+        match.text = std::string(match_text);
         matches.push_back(match);
         
         start_pos = match.end;
@@ -114,7 +114,7 @@ std::optional<Match> RE2Matcher::find_first(const std::string& text) const {
         Match match;
         match.start = match_text.data() - text.data();
         match.end = match.start + match_text.size();
-        match.text = match_text.ToString();
+        match.text = std::string(match_text);
         return match;
     }
 #endif

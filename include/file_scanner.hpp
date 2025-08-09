@@ -3,8 +3,10 @@
 #include <string>
 #include <vector>
 #include <functional>
+#include "gitignore.hpp"
 #include <memory>
 #include <filesystem>
+#include <vector>
 
 // Forward declaration
 namespace cpp_ripgrep {
@@ -50,10 +52,13 @@ public:
 
 private:
     const Options& options_;
-    
+    std::vector<Gitignore> gitignore_stack_;
+
     void scan_directory(const std::string& path, int depth,
                        std::function<void(const FileInfo&)> file_callback);
     
+    bool is_ignored(const std::filesystem::path& path) const;
+
     bool matches_pattern(const std::string& path, 
                         const std::vector<std::string>& patterns) const;
     

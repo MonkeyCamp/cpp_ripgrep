@@ -1,5 +1,6 @@
 #include "file_scanner.hpp"
 #include "options.hpp"
+#include "gitignore.hpp"
 #include <fstream>
 #include <iostream>
 #include <algorithm>
@@ -17,7 +18,17 @@
 
 namespace cpp_ripgrep {
 
-FileScanner::FileScanner(const Options& options) : options_(options) {}
+FileScanner::FileScanner(const Options& options) : options_(options) {
+    // Find git root and load top-level .gitignore
+    std::filesystem::path current_path = std::filesystem::current_path();
+    while (current_path.has_parent_path()) {
+        if (std::filesystem::exists(current_path / ".git")) {
+            gitignore_stack_.emplace_back(current_path);
+            break;
+        }
+        current_path = current_path.parent_path();
+    }
+}
 
 void FileScanner::scan(const std::vector<std::string>& paths, 
                       std::function<void(const FileInfo&)> file_callback) {
@@ -53,14 +64,30 @@ void FileScanner::scan_directory(const std::string& path, int depth,
     if (options_.max_depth >= 0 && depth > options_.max_depth) {
         return;
     }
+
+    // Check for a .gitignore file in the current directory
+    std::filesystem::path gitignore_path = std::filesystem::path(path) / ".gitignore";
+    bool gitignore_pushed = false;
+    if (std::filesystem::exists(gitignore_path)) {
+        gitignore_stack_.emplace_back(path);
+        gitignore_pushed = true;
+    }
     
     try {
         for (const auto& entry : std::filesystem::directory_iterator(path)) {
             const std::string entry_path = entry.path().string();
             
-            // Skip hidden files and directories
-            if (entry.path().filename().string()[0] == '.') {
+            if (is_ignored(entry.path())) {
                 continue;
+            }
+
+            // Skip hidden files and directories, unless they are explicitly not ignored
+            if (entry.path().filename().string()[0] == '.' && !is_ignored(entry.path())) {
+                 if (entry.is_directory()) {
+                    if (is_ignored(entry.path())) continue;
+                 } else {
+                    if (is_ignored(entry.path())) continue;
+                 }
             }
             
             if (entry.is_directory()) {
@@ -74,6 +101,10 @@ void FileScanner::scan_directory(const std::string& path, int depth,
         }
     } catch (const std::exception& e) {
         std::cerr << "Error scanning directory " << path << ": " << e.what() << "\n";
+    }
+
+    if (gitignore_pushed) {
+        gitignore_stack_.pop_back();
     }
 }
 
@@ -204,7 +235,20 @@ std::vector<LineInfo> FileScanner::get_lines(const std::string& content) const {
     return lines;
 }
 
+bool FileScanner::is_ignored(const std::filesystem::path& path) const {
+    for (const auto& gitignore : gitignore_stack_) {
+        if (gitignore.is_ignored(path)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 bool FileScanner::should_scan_file(const std::string& path) const {
+    if (is_ignored(path)) {
+        return false;
+    }
+
     // Check exclude patterns
     if (!options_.exclude_patterns.empty()) {
         for (const auto& pattern : options_.exclude_patterns) {

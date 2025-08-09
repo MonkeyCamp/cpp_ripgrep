@@ -48,6 +48,7 @@ set(SOURCES
     src/main.cpp
     src/grep_engine.cpp
     src/file_scanner.cpp
+    src/gitignore.cpp
     src/regex_matcher.cpp
     src/re2_matcher.cpp
     src/options.cpp
@@ -56,16 +57,40 @@ set(SOURCES
 # Create executable
 add_executable(cpp_ripgrep ${SOURCES})
 
+# Test sources
+set(TEST_SOURCES
+    tests/test_main.cpp
+    src/grep_engine.cpp
+    src/file_scanner.cpp
+    src/gitignore.cpp
+    src/regex_matcher.cpp
+    src/re2_matcher.cpp
+    src/options.cpp
+)
+
+# Create test executable
+add_executable(run_tests ${TEST_SOURCES})
+
 # Link libraries
 target_link_libraries(cpp_ripgrep Threads::Threads)
+target_link_libraries(run_tests Threads::Threads)
 
 # Link PCRE2
 target_link_libraries(cpp_ripgrep pcre2-8)
+target_link_libraries(run_tests pcre2-8)
 target_compile_definitions(cpp_ripgrep PRIVATE HAVE_PCRE2)
+target_compile_definitions(run_tests PRIVATE HAVE_PCRE2)
 
 # Link RE2
 target_link_libraries(cpp_ripgrep re2)
+target_link_libraries(run_tests re2)
 target_compile_definitions(cpp_ripgrep PRIVATE HAVE_RE2)
+target_compile_definitions(run_tests PRIVATE HAVE_RE2)
 
 # Install target
 install(TARGETS cpp_ripgrep DESTINATION bin)
+install(TARGETS run_tests DESTINATION bin)
+
+# Testing
+enable_testing()
+add_test(NAME gitignore_test COMMAND run_tests)
